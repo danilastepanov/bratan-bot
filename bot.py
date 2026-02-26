@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, time
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
 from aiogram.types import Message
 
 import config
@@ -63,10 +64,8 @@ async def scheduler() -> None:
         target_hour = 21
         target_minute = random.randint(0, 59)
 
-        # Следующий запуск — сегодня или завтра
         target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
         if now >= target:
-            # Уже прошло — ждём до завтра
             target = target.replace(day=target.day + 1)
 
         wait_seconds = (target - now).total_seconds()
@@ -74,7 +73,6 @@ async def scheduler() -> None:
 
         await asyncio.sleep(wait_seconds)
 
-        # Отправляем только в случайные дни (70% вероятность)
         if random.random() <= config.CALL_PROBABILITY:
             for chat_id in config.CHAT_IDS:
                 try:
@@ -85,9 +83,10 @@ async def scheduler() -> None:
             logger.info("Skipped today (random day off)")
 
 
-@dp.message()
-async def handle_message(message: Message) -> None:
-    pass
+@dp.message(Command("братан"))
+async def cmd_bratan(message: Message) -> None:
+    phrase = random.choice(PHRASES)
+    await message.answer(phrase)
 
 
 async def main() -> None:
