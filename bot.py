@@ -28,7 +28,7 @@ async def scheduler() -> None:
         # Основной зов — случайная минута между 21:00 и 21:59
         main_call = now.replace(hour=21, minute=target_minute, second=0, microsecond=0)
         if now >= main_call:
-            main_call = main_call + timedelta(days=1)
+            main_call += timedelta(days=1)
 
         # Подготовительная фраза — за 30 минут до основного зова
         warm_up_call = main_call - timedelta(minutes=30)
@@ -52,7 +52,7 @@ async def scheduler() -> None:
                 except Exception as e:
                     logger.error(f"Failed warm-up to {chat_id}: {e}")
 
-        # Ждём ещё 30 минут до основного зова
+        # Ждём до основного зова
         wait_main = (main_call - datetime.now(tz)).total_seconds()
         if wait_main > 0:
             await asyncio.sleep(wait_main)
@@ -67,6 +67,13 @@ async def scheduler() -> None:
                     logger.error(f"Failed main call to {chat_id}: {e}")
         else:
             logger.info("Skipped today (random day off)")
+
+        # Ждём до 22:30 — гарантируем что новая итерация стартует
+        # только после окончания окна 21:00-22:00
+        next_start = main_call.replace(hour=22, minute=30, second=0, microsecond=0)
+        wait_next = (next_start - datetime.now(tz)).total_seconds()
+        if wait_next > 0:
+            await asyncio.sleep(wait_next)
 
 
 @dp.message(Command("братан"))
