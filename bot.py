@@ -52,8 +52,8 @@ async def scheduler() -> None:
             logger.info(f"Skipping hour {now.hour} — outside active window (9-22)")
 
 
-@dp.message(Command("queen"))
-async def cmd_queen(message: Message) -> None:
+@dp.message(Command("братан"))
+async def cmd_bratan(message: Message) -> None:
     member = random.choice(config.MEMBERS)
     await message.answer(get_praise(member))
 
