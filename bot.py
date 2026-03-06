@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher
@@ -30,23 +30,26 @@ async def scheduler() -> None:
         now = datetime.now(tz)
 
         # Ждём до начала следующего часа
-        next_hour = now.replace(minute=0, second=0, microsecond=0)
-        from datetime import timedelta
-        next_hour += timedelta(hours=1)
-
+        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         wait = (next_hour - datetime.now(tz)).total_seconds()
-        logger.info(f"Next praise at {next_hour.strftime('%Y-%m-%d %H:%M')}, sleeping {int(wait)}s")
+        logger.info(f"Next tick at {next_hour.strftime('%Y-%m-%d %H:%M')}, sleeping {int(wait)}s")
         await asyncio.sleep(wait)
 
-        member = random.choice(config.MEMBERS)
-        text = get_praise(member)
+        now = datetime.now(tz)
 
-        for chat_id in config.CHAT_IDS:
-            try:
-                await bot.send_message(chat_id=chat_id, text=text)
-                logger.info(f"Praised {member} in chat {chat_id}")
-            except Exception as e:
-                logger.error(f"Failed to send to {chat_id}: {e}")
+        # Отправляем только с 9:00 до 22:00 включительно
+        if 9 <= now.hour <= 22:
+            member = random.choice(config.MEMBERS)
+            text = get_praise(member)
+
+            for chat_id in config.CHAT_IDS:
+                try:
+                    await bot.send_message(chat_id=chat_id, text=text)
+                    logger.info(f"Praised {member} in chat {chat_id}")
+                except Exception as e:
+                    logger.error(f"Failed to send to {chat_id}: {e}")
+        else:
+            logger.info(f"Skipping hour {now.hour} — outside active window (9-22)")
 
 
 @dp.message(Command("братан"))
