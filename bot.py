@@ -32,7 +32,7 @@ async def scheduler() -> None:
         # Ждём до начала следующего часа
         next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         wait = (next_hour - datetime.now(tz)).total_seconds()
-        logger.info(f"Next tick at {next_hour.strftime('%Y-%m-%d %H:%M')}, sleeping {int(wait)}s")
+        logger.info(f"Next praise at {next_hour.strftime('%Y-%m-%d %H:%M')}, sleeping {int(wait)}s")
         await asyncio.sleep(wait)
 
         now = datetime.now(tz)
@@ -52,8 +52,8 @@ async def scheduler() -> None:
             logger.info(f"Skipping hour {now.hour} — outside active window (9-22)")
 
 
-@dp.message(Command("братан"))
-async def cmd_bratan(message: Message) -> None:
+@dp.message(Command("queen"))
+async def cmd_queen(message: Message) -> None:
     member = random.choice(config.MEMBERS)
     await message.answer(get_praise(member))
 
