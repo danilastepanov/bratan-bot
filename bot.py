@@ -268,7 +268,7 @@ async def scheduler() -> None:
 
 
 # --- Команда /помощь ---
-@dp.message(Command("помощь"))
+@dp.message(Command("помощь", "pomosh"))
 async def cmd_help(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
@@ -304,7 +304,7 @@ async def on_media(message: Message) -> None:
 
 
 # --- Команда /погода ---
-@dp.message(Command("погода"))
+@dp.message(Command("погода", "pogoda"))
 async def cmd_weather(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
@@ -322,7 +322,7 @@ async def cmd_weather(message: Message) -> None:
 
 
 # --- Команда /факт ---
-@dp.message(Command("факт"))
+@dp.message(Command("факт", "fakt"))
 async def cmd_fact(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
@@ -337,7 +337,7 @@ async def cmd_fact(message: Message) -> None:
 
 
 # --- Команда /напомни ---
-@dp.message(Command("напомни"))
+@dp.message(Command("напомни", "napomni"))
 async def cmd_remind(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
@@ -377,7 +377,7 @@ async def cmd_remind(message: Message) -> None:
 
 
 # --- Команда /братан: только в разрешённых чатах ---
-@dp.message(Command("братан"))
+@dp.message(Command("братан", "bratan"))
 async def cmd_bratan(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
@@ -389,11 +389,11 @@ async def cmd_bratan(message: Message) -> None:
 # --- Настройка меню команд ---
 async def setup_bot_commands() -> None:
     commands = [
-        BotCommand(command="братан", description="Братан хвалит случайного участника 💪"),
-        BotCommand(command="погода", description="Погода в городе — /погода Москва 🌤"),
-        BotCommand(command="факт", description="Случайный факт из Википедии 🧠"),
-        BotCommand(command="напомни", description="Напоминание — /напомни через 2ч встреча ⏰"),
-        BotCommand(command="помощь", description="Список всех команд и возможностей ⚔️"),
+        BotCommand(command="bratan", description="Братан хвалит случайного участника 💪"),
+        BotCommand(command="pogoda", description="Погода в городе — /pogoda Москва 🌤"),
+        BotCommand(command="fakt", description="Случайный факт из Википедии 🧠"),
+        BotCommand(command="napomni", description="Напоминание — /napomni через 2ч встреча ⏰"),
+        BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Bot commands menu set")
