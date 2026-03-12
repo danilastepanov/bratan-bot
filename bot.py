@@ -275,6 +275,42 @@ async def scheduler() -> None:
                 logger.error(f"Failed to send to {chat_id}: {e}")
 
 
+# --- Планировщик цитат: 2 раза в день в случайное время между 12:00 и 17:59 ---
+async def quote_scheduler() -> None:
+    tz = ZoneInfo(config.TIMEZONE)
+
+    while True:
+        now = datetime.now(tz)
+
+        # Генерируем два случайных момента в окне [12:00, 17:59] на сегодня
+        times = sorted([
+            now.replace(hour=random.randint(12, 17), minute=random.randint(0, 59), second=0, microsecond=0)
+            for _ in range(2)
+        ])
+
+        # Оставляем только те, что ещё не прошли; остальные переносим на завтра
+        candidates = []
+        for t in times:
+            if t <= now:
+                t += timedelta(days=1)
+            candidates.append(t)
+
+        # Спим до ближайшего и отправляем
+        next_time = min(candidates)
+        wait = (next_time - now).total_seconds()
+        logger.info(f"Next quote at {next_time.strftime('%Y-%m-%d %H:%M')} ({int(wait // 3600)}h {int(wait % 3600 // 60)}m from now)")
+        await asyncio.sleep(wait)
+
+        author, text = random.choice(QUOTES)
+        quote_text = f"💬 <i>{text}</i>\n\n— <b>{author}</b>"
+        for chat_id in config.CHAT_IDS:
+            try:
+                await bot.send_message(chat_id=chat_id, text=quote_text, parse_mode="HTML")
+                logger.info(f"Quote sent to {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to send quote to {chat_id}: {e}")
+
+
 # --- Emoji-реакции на текстовые сообщения (8% шанс) ---
 @dp.message(F.chat.id.in_(config.CHAT_IDS) & F.text & ~F.text.startswith("/"))
 async def on_text_react(message: Message) -> None:
@@ -437,15 +473,17 @@ async def setup_bot_commands() -> None:
 # --- Запуск с graceful shutdown ---
 async def main() -> None:
     await setup_bot_commands()
-    task = asyncio.create_task(scheduler())
+    task_praise = asyncio.create_task(scheduler())
+    task_quotes = asyncio.create_task(quote_scheduler())
     try:
         await dp.start_polling(bot)
     finally:
-        task.cancel()
+        task_praise.cancel()
+        task_quotes.cancel()
         for t in _reminders.values():
             t.cancel()
         try:
-            await task
+            await asyncio.gather(task_praise, task_quotes, return_exceptions=True)
         except asyncio.CancelledError:
             pass
         await bot.session.close()
