@@ -9,13 +9,14 @@ from zoneinfo import ZoneInfo
 import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import BotCommand, Message
+from aiogram.types import BotCommand, Message, ReactionTypeEmoji
 
 import config
 from phrases import (
     HOLIDAY_PHRASES,
     MEDIA_PHRASES,
     PRAISE_PHRASES,
+    QUOTES,
     REMINDER_FIRE_PHRASES,
     REMINDER_SET_PHRASES,
     WEATHER_BAD_PHRASES,
@@ -35,7 +36,9 @@ _phrase_deck: deque[str] = deque()
 _member_deck: deque[str] = deque()
 _media_deck: deque[str] = deque()
 
-MEDIA_REACTION_CHANCE = 0.15  # 15% шанс реакции на фото/стикер
+MEDIA_REACTION_CHANCE = 0.15   # 15% шанс реакции на фото/стикер
+EMOJI_REACTION_CHANCE = 0.08   # 8% шанс emoji-реакции на текстовое сообщение
+REACTION_EMOJIS = ["🔥", "💯", "⚡", "🏆", "🎉", "🤩", "❤️‍🔥", "👏", "😱", "💪"]
 
 # WMO weather codes → русское описание + тип (good/bad/neutral)
 _WMO: dict[int, tuple[str, str]] = {
@@ -272,6 +275,20 @@ async def scheduler() -> None:
                 logger.error(f"Failed to send to {chat_id}: {e}")
 
 
+# --- Emoji-реакции на текстовые сообщения (8% шанс) ---
+@dp.message(F.chat.id.in_(config.CHAT_IDS) & F.text)
+async def on_text_react(message: Message) -> None:
+    if (message.text or "").startswith("/"):
+        return
+    if random.random() > EMOJI_REACTION_CHANCE:
+        return
+    emoji = random.choice(REACTION_EMOJIS)
+    try:
+        await message.react([ReactionTypeEmoji(emoji=emoji)])
+    except Exception as e:
+        logger.debug(f"React failed: {e}")
+
+
 # --- Команда /помощь ---
 @dp.message(Command("помощь", "pomosh"))
 async def cmd_help(message: Message) -> None:
@@ -283,12 +300,14 @@ async def cmd_help(message: Message) -> None:
         "/братан — Братан хвалит случайного участника\n"
         "/погода <i>город</i> — Узнать текущую погоду\n"
         "/факт — Случайный факт из Википедии\n"
+        "/цитата — Цитата великого человека\n"
         "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
         "/помощь — Это сообщение\n\n"
         "🤖 <b>Автоматически:</b>\n\n"
         "• Раз в день (12:00–18:00) — похвала случайному участнику\n"
         "• В праздники — тематические поздравления\n"
-        "• На фото и стикеры — реакция с шансом 15%\n\n"
+        "• На фото и стикеры — реакция с шансом 15%\n"
+        "• На текстовые сообщения — emoji-реакция с шансом 8%\n\n"
         "БРАТАН ВСЕГДА НА СТРАЖЕ!! БУГИ ВУГИ!!"
     )
     await message.reply(text, parse_mode="HTML")
@@ -339,6 +358,18 @@ async def cmd_fact(message: Message) -> None:
             await message.reply(text)
             return
     await message.reply("ХА!! БРАТАН ИСКАЛ ФАКТ НО ВИКИ МОЛЧИТ!! ПОПРОБУЙ ЕЩЁ РАЗ!! БРАТАН НЕ СДАЁТСЯ!!")
+
+
+# --- Команда /цитата ---
+@dp.message(Command("цитата", "quote"))
+async def cmd_quote(message: Message) -> None:
+    if not _allowed(message):
+        return
+    author, text = random.choice(QUOTES)
+    await message.reply(
+        f"💬 <i>{text}</i>\n\n— <b>{author}</b>",
+        parse_mode="HTML",
+    )
 
 
 # --- Команда /напомни ---
@@ -398,6 +429,7 @@ async def setup_bot_commands() -> None:
         BotCommand(command="pogoda", description="Погода в городе — /pogoda Москва 🌤"),
         BotCommand(command="fakt", description="Случайный факт из Википедии 🧠"),
         BotCommand(command="napomni", description="Напоминание — /napomni через 2ч встреча ⏰"),
+        BotCommand(command="quote", description="Случайная цитата великих людей 💬"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
     ]
     await bot.set_my_commands(commands)
