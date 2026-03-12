@@ -267,6 +267,28 @@ async def scheduler() -> None:
                 logger.error(f"Failed to send to {chat_id}: {e}")
 
 
+# --- Команда /помощь ---
+@dp.message(Command("помощь"))
+async def cmd_help(message: Message) -> None:
+    if message.chat.id not in config.CHAT_IDS:
+        return
+    text = (
+        "ХА!! БРАТАН ОБЪЯСНЯЕТ ЧТО УМЕЕТ!!\n\n"
+        "⚔️ <b>Команды:</b>\n\n"
+        "/братан — Братан хвалит случайного участника\n"
+        "/погода <i>город</i> — Узнать текущую погоду\n"
+        "/факт — Случайный факт из Википедии\n"
+        "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
+        "/помощь — Это сообщение\n\n"
+        "🤖 <b>Автоматически:</b>\n\n"
+        "• Раз в день (12:00–18:00) — похвала случайному участнику\n"
+        "• В праздники — тематические поздравления\n"
+        "• На фото и стикеры — реакция с шансом 15%\n\n"
+        "БРАТАН ВСЕГДА НА СТРАЖЕ!! БУГИ ВУГИ!!"
+    )
+    await message.reply(text, parse_mode="HTML")
+
+
 # --- Реакция на фото и стикеры (15% шанс) ---
 @dp.message(F.chat.id.in_(config.CHAT_IDS) & (F.photo | F.sticker))
 async def on_media(message: Message) -> None:
