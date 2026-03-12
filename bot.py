@@ -276,10 +276,8 @@ async def scheduler() -> None:
 
 
 # --- Emoji-реакции на текстовые сообщения (8% шанс) ---
-@dp.message(F.chat.id.in_(config.CHAT_IDS) & F.text)
+@dp.message(F.chat.id.in_(config.CHAT_IDS) & F.text & ~F.text.startswith("/"))
 async def on_text_react(message: Message) -> None:
-    if (message.text or "").startswith("/"):
-        return
     if random.random() > EMOJI_REACTION_CHANCE:
         return
     emoji = random.choice(REACTION_EMOJIS)
