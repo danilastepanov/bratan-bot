@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 import config
-from phrases import PRAISE_PHRASES
+from phrases import HOLIDAY_PHRASES, PRAISE_PHRASES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,7 +41,14 @@ def next_member() -> str:
     return _member_deck.popleft()
 
 
-def get_praise(member: str) -> str:
+def get_praise(member: str, tz: ZoneInfo | None = None) -> str:
+    if tz:
+        today = datetime.now(tz)
+        holiday_phrases = HOLIDAY_PHRASES.get((today.month, today.day))
+        if holiday_phrases:
+            phrase = random.choice(holiday_phrases)
+            logger.info(f"Holiday ({today.month}/{today.day}) — using holiday phrase")
+            return phrase.format(name=member)
     return next_phrase().format(name=member)
 
 
@@ -70,7 +77,7 @@ async def scheduler() -> None:
 
         member = next_member()
         for chat_id in config.CHAT_IDS:
-            text = get_praise(member)  # каждый чат получает свою фразу
+            text = get_praise(member, tz)  # праздник или обычная фраза; каждый чат своя
             try:
                 await bot.send_message(chat_id=chat_id, text=text)
                 logger.info(f"Praised {member} in chat {chat_id}")
@@ -83,8 +90,9 @@ async def scheduler() -> None:
 async def cmd_bratan(message: Message) -> None:
     if message.chat.id not in config.CHAT_IDS:
         return
+    tz = ZoneInfo(config.TIMEZONE)
     member = next_member()
-    await message.answer(get_praise(member))
+    await message.answer(get_praise(member, tz))
 
 
 # --- Запуск с graceful shutdown ---
