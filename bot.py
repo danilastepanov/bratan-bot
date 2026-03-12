@@ -5,12 +5,12 @@ from collections import deque
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message
 
 import config
-from phrases import HOLIDAY_PHRASES, PRAISE_PHRASES
+from phrases import HOLIDAY_PHRASES, MEDIA_PHRASES, PRAISE_PHRASES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +21,9 @@ dp = Dispatcher()
 # --- Shuffle-деки: гарантируют отсутствие повторов подряд ---
 _phrase_deck: deque[str] = deque()
 _member_deck: deque[str] = deque()
+_media_deck: deque[str] = deque()
+
+MEDIA_REACTION_CHANCE = 0.15  # 15% шанс реакции на фото/стикер
 
 
 def _refill(deck: deque, source: list) -> None:
@@ -39,6 +42,19 @@ def next_member() -> str:
     if not _member_deck:
         _refill(_member_deck, config.MEMBERS)
     return _member_deck.popleft()
+
+
+def next_media_phrase(name: str | None = None) -> str:
+    if not _media_deck:
+        _refill(_media_deck, MEDIA_PHRASES)
+    phrase = _media_deck.popleft()
+    if name and "{name}" in phrase:
+        return phrase.format(name=name)
+    # Если имя не передано, пропускаем фразы с {name}
+    if "{name}" in phrase:
+        fallback = [p for p in MEDIA_PHRASES if "{name}" not in p]
+        return random.choice(fallback)
+    return phrase
 
 
 def get_praise(member: str, tz: ZoneInfo | None = None) -> str:
@@ -83,6 +99,20 @@ async def scheduler() -> None:
                 logger.info(f"Praised {member} in chat {chat_id}")
             except Exception as e:
                 logger.error(f"Failed to send to {chat_id}: {e}")
+
+
+# --- Реакция на фото и стикеры (15% шанс) ---
+@dp.message(F.chat.id.in_(config.CHAT_IDS) & (F.photo | F.sticker))
+async def on_media(message: Message) -> None:
+    if random.random() > MEDIA_REACTION_CHANCE:
+        return
+    username = message.from_user.username
+    name = f"@{username}" if username else message.from_user.first_name
+    # Реагируем только если автор есть в списке участников
+    sender = f"@{username}" if username else None
+    member = sender if sender in config.MEMBERS else None
+    await message.reply(next_media_phrase(member or name))
+    logger.info(f"Media reaction sent for {name} in chat {message.chat.id}")
 
 
 # --- Команда /братан: только в разрешённых чатах ---
