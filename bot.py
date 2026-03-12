@@ -234,6 +234,11 @@ def get_praise(member: str, tz: ZoneInfo | None = None) -> str:
     return next_phrase().format(name=member)
 
 
+def _allowed(message: Message) -> bool:
+    """Личка — всегда разрешена. Группа — только если в CHAT_IDS."""
+    return message.chat.type == "private" or message.chat.id in config.CHAT_IDS
+
+
 # --- Планировщик: 1 сообщение в день в случайное время между 12:00 и 17:59 ---
 async def scheduler() -> None:
     tz = ZoneInfo(config.TIMEZONE)
@@ -270,7 +275,7 @@ async def scheduler() -> None:
 # --- Команда /помощь ---
 @dp.message(Command("помощь", "pomosh"))
 async def cmd_help(message: Message) -> None:
-    if message.chat.id not in config.CHAT_IDS:
+    if not _allowed(message):
         return
     text = (
         "ХА!! БРАТАН ОБЪЯСНЯЕТ ЧТО УМЕЕТ!!\n\n"
@@ -306,7 +311,7 @@ async def on_media(message: Message) -> None:
 # --- Команда /погода ---
 @dp.message(Command("погода", "pogoda"))
 async def cmd_weather(message: Message) -> None:
-    if message.chat.id not in config.CHAT_IDS:
+    if not _allowed(message):
         return
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2 or not args[1].strip():
@@ -324,7 +329,7 @@ async def cmd_weather(message: Message) -> None:
 # --- Команда /факт ---
 @dp.message(Command("факт", "fakt"))
 async def cmd_fact(message: Message) -> None:
-    if message.chat.id not in config.CHAT_IDS:
+    if not _allowed(message):
         return
     await message.reply("БРАТАН ИДЁТ В БИБЛИОТЕКУ ЗНАНИЙ!! СЕКУНДУ!!")
     # Пробуем до 3 раз — иногда попадаются пустые статьи
@@ -339,7 +344,7 @@ async def cmd_fact(message: Message) -> None:
 # --- Команда /напомни ---
 @dp.message(Command("напомни", "napomni"))
 async def cmd_remind(message: Message) -> None:
-    if message.chat.id not in config.CHAT_IDS:
+    if not _allowed(message):
         return
     parsed = parse_reminder(message.text or "")
     if parsed is None:
@@ -379,7 +384,7 @@ async def cmd_remind(message: Message) -> None:
 # --- Команда /братан: только в разрешённых чатах ---
 @dp.message(Command("братан", "bratan"))
 async def cmd_bratan(message: Message) -> None:
-    if message.chat.id not in config.CHAT_IDS:
+    if not _allowed(message):
         return
     tz = ZoneInfo(config.TIMEZONE)
     member = next_member()
