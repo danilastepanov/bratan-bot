@@ -21,6 +21,7 @@ from phrases import (
     WEATHER_BAD_PHRASES,
     WEATHER_GOOD_PHRASES,
     WEATHER_PHRASES,
+    WIKI_PHRASES,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -148,6 +149,42 @@ async def fetch_weather(city: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Случайный факт из Википедии
+# ---------------------------------------------------------------------------
+
+WIKI_API = "https://ru.wikipedia.org/api/rest_v1/page/random/summary"
+MAX_FACT_LEN = 500  # макс. символов из описания статьи
+
+
+async def fetch_wiki_fact() -> str | None:
+    """Возвращает готовый текст с фактом или None при ошибке."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {"User-Agent": "bratan-bot/1.0"}
+            async with session.get(WIKI_API, headers=headers) as r:
+                data = await r.json()
+
+        title = data.get("title", "Неизвестно")
+        extract = data.get("extract", "").strip()
+        url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+
+        # Если это страница-дизамбиг или нет описания — пропускаем
+        if not extract or data.get("type") == "disambiguation":
+            return None
+
+        # Обрезаем до MAX_FACT_LEN, не разрывая слово
+        if len(extract) > MAX_FACT_LEN:
+            extract = extract[:MAX_FACT_LEN].rsplit(" ", 1)[0] + "..."
+
+        phrase = random.choice(WIKI_PHRASES)
+        return phrase.format(title=title, fact=extract, url=url)
+
+    except Exception as e:
+        logger.error(f"Wiki fetch error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Напоминания
 # ---------------------------------------------------------------------------
 
@@ -260,6 +297,21 @@ async def cmd_weather(message: Message) -> None:
         await message.reply(f"ХА!! Братан не нашёл такой город — «{city}»!! Проверь название!!")
     else:
         await message.reply(text)
+
+
+# --- Команда /факт ---
+@dp.message(Command("факт"))
+async def cmd_fact(message: Message) -> None:
+    if message.chat.id not in config.CHAT_IDS:
+        return
+    await message.reply("БРАТАН ИДЁТ В БИБЛИОТЕКУ ЗНАНИЙ!! СЕКУНДУ!!")
+    # Пробуем до 3 раз — иногда попадаются пустые статьи
+    for _ in range(3):
+        text = await fetch_wiki_fact()
+        if text:
+            await message.reply(text)
+            return
+    await message.reply("ХА!! БРАТАН ИСКАЛ ФАКТ НО ВИКИ МОЛЧИТ!! ПОПРОБУЙ ЕЩЁ РАЗ!! БРАТАН НЕ СДАЁТСЯ!!")
 
 
 # --- Команда /напомни ---
