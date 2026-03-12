@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import BotCommand, Message
 
 import config
 from phrases import (
@@ -386,8 +386,22 @@ async def cmd_bratan(message: Message) -> None:
     await message.answer(get_praise(member, tz))
 
 
+# --- Настройка меню команд ---
+async def setup_bot_commands() -> None:
+    commands = [
+        BotCommand(command="братан", description="Братан хвалит случайного участника 💪"),
+        BotCommand(command="погода", description="Погода в городе — /погода Москва 🌤"),
+        BotCommand(command="факт", description="Случайный факт из Википедии 🧠"),
+        BotCommand(command="напомни", description="Напоминание — /напомни через 2ч встреча ⏰"),
+        BotCommand(command="помощь", description="Список всех команд и возможностей ⚔️"),
+    ]
+    await bot.set_my_commands(commands)
+    logger.info("Bot commands menu set")
+
+
 # --- Запуск с graceful shutdown ---
 async def main() -> None:
+    await setup_bot_commands()
     task = asyncio.create_task(scheduler())
     try:
         await dp.start_polling(bot)
