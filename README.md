@@ -45,9 +45,9 @@ pip install -r requirements.txt
 ### 3. Создать `.env`
 
 ```env
-BOT_TOKEN=your_telegram_bot_token
-CHAT_IDS=-1001234567890
-MEMBERS=@user1,@user2,@user3
+BOT_TOKEN=your_telegram_bot_token_here
+CHAT_IDS=your_chat_id_here
+MEMBERS=@username1,@username2,@username3
 TIMEZONE=Europe/Moscow
 ```
 

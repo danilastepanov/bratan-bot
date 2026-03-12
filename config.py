@@ -12,11 +12,7 @@ _members_env = os.getenv("MEMBERS", "")
 MEMBERS: list[str] = (
     [x.strip() for x in _members_env.split(",") if x.strip()]
     if _members_env
-    else [
-        "@Richard_Starodubov",
-        "@StepanoffDanila",
-        "@scary_artemis",
-    ]
+    else []
 )
 
 # Валидация при старте
