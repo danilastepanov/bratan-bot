@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+from collections import deque
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,50 +18,88 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
+# --- Shuffle-деки: гарантируют отсутствие повторов подряд ---
+_phrase_deck: deque[str] = deque()
+_member_deck: deque[str] = deque()
+
+
+def _refill(deck: deque, source: list) -> None:
+    shuffled = source.copy()
+    random.shuffle(shuffled)
+    deck.extend(shuffled)
+
+
+def next_phrase() -> str:
+    if not _phrase_deck:
+        _refill(_phrase_deck, PRAISE_PHRASES)
+    return _phrase_deck.popleft()
+
+
+def next_member() -> str:
+    if not _member_deck:
+        _refill(_member_deck, config.MEMBERS)
+    return _member_deck.popleft()
+
 
 def get_praise(member: str) -> str:
-    phrase = random.choice(PRAISE_PHRASES)
-    return phrase.format(name=member)
+    return next_phrase().format(name=member)
 
 
+# --- Планировщик: 1 сообщение в день в случайное время между 12:00 и 17:59 ---
 async def scheduler() -> None:
     tz = ZoneInfo(config.TIMEZONE)
 
     while True:
         now = datetime.now(tz)
 
-        # Ждём до начала следующего часа
-        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        wait = (next_hour - datetime.now(tz)).total_seconds()
-        logger.info(f"Next praise at {next_hour.strftime('%Y-%m-%d %H:%M')}, sleeping {int(wait)}s")
+        # Выбираем случайное время внутри окна
+        target_hour = random.randint(12, 17)
+        target_minute = random.randint(0, 59)
+
+        # Пробуем сегодня — если уже прошло, берём завтра
+        candidate = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+
+        wait = (candidate - now).total_seconds()
+        logger.info(
+            f"Next praise at {candidate.strftime('%Y-%m-%d %H:%M')} "
+            f"({int(wait // 3600)}h {int(wait % 3600 // 60)}m from now)"
+        )
         await asyncio.sleep(wait)
 
-        now = datetime.now(tz)
-
-        # Отправляем только с 9:00 до 22:00 включительно
-        if 9 <= now.hour <= 22:
-            member = random.choice(config.MEMBERS)
-            text = get_praise(member)
-
-            for chat_id in config.CHAT_IDS:
-                try:
-                    await bot.send_message(chat_id=chat_id, text=text)
-                    logger.info(f"Praised {member} in chat {chat_id}")
-                except Exception as e:
-                    logger.error(f"Failed to send to {chat_id}: {e}")
-        else:
-            logger.info(f"Skipping hour {now.hour} — outside active window (9-22)")
+        member = next_member()
+        for chat_id in config.CHAT_IDS:
+            text = get_praise(member)  # каждый чат получает свою фразу
+            try:
+                await bot.send_message(chat_id=chat_id, text=text)
+                logger.info(f"Praised {member} in chat {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to send to {chat_id}: {e}")
 
 
+# --- Команда /братан: только в разрешённых чатах ---
 @dp.message(Command("братан"))
 async def cmd_bratan(message: Message) -> None:
-    member = random.choice(config.MEMBERS)
+    if message.chat.id not in config.CHAT_IDS:
+        return
+    member = next_member()
     await message.answer(get_praise(member))
 
 
+# --- Запуск с graceful shutdown ---
 async def main() -> None:
-    asyncio.create_task(scheduler())
-    await dp.start_polling(bot)
+    task = asyncio.create_task(scheduler())
+    try:
+        await dp.start_polling(bot)
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        await bot.session.close()
+        logger.info("Bot stopped gracefully")
 
 
 if __name__ == "__main__":
