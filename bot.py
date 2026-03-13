@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
+import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import BotCommand, Message, ReactionTypeEmoji
@@ -487,6 +488,7 @@ async def cmd_help(message: Message) -> None:
         "/потыкать <i>@user</i> — Потыкать кого-нибудь 👉\n"
         "/кто <i>вопрос</i> — Братан выбирает случайного участника 🎯\n"
         "/дуэль <i>@user</i> — Вызов на аниме-дуэль ⚔️\n"
+        "/топдуэль — Топ-5 победителей дуэлей 🏆\n"
         "/курс — Курс USD, EUR, CNY от ЦБ РФ\n"
         "/мем — Случайный мем\n"
         "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
@@ -716,8 +718,48 @@ async def cmd_kto(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /дуэль — аниме-дуэль между двумя участниками
+# /дуэль — аниме-дуэль + статистика побед (SQLite)
 # ---------------------------------------------------------------------------
+
+DB_PATH = "duel_stats.db"
+
+
+async def db_init() -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS duel_wins ("
+            "  username TEXT PRIMARY KEY,"
+            "  wins     INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        await db.commit()
+
+
+async def db_add_win(username: str) -> int:
+    """Добавляет победу и возвращает новое суммарное кол-во побед."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO duel_wins(username, wins) VALUES(?, 1)"
+            " ON CONFLICT(username) DO UPDATE SET wins = wins + 1",
+            (username,),
+        )
+        await db.commit()
+        async with db.execute(
+            "SELECT wins FROM duel_wins WHERE username = ?", (username,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row else 1
+
+
+async def db_top(limit: int = 5) -> list[tuple[str, int]]:
+    """Возвращает топ-N победителей."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT username, wins FROM duel_wins ORDER BY wins DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            return await cur.fetchall()
+
 
 _DUEL_WIN_PHRASES = [
     "{winner} СНЁС {loser} ОДНИМ УДАРОМ!! КАК ГИТАРАКРА!!",
@@ -762,12 +804,32 @@ async def cmd_duel(message: Message) -> None:
     winner, loser = random.choice([(challenger, opponent), (opponent, challenger)])
     phrase = random.choice(_DUEL_WIN_PHRASES).format(winner=f"<b>{winner}</b>", loser=f"<b>{loser}</b>")
 
+    total_wins = await db_add_win(winner)
+
     await message.reply(
         f"⚔️ <b>{challenger}</b> вызывает <b>{opponent}</b> на дуэль!!\n\n"
         f"<i>...бой начался...</i>\n\n"
-        f"🏆 {phrase}",
+        f"🏆 {phrase}\n\n"
+        f"📊 Побед у <b>{winner}</b>: <b>{total_wins}</b>",
         parse_mode="HTML",
     )
+
+
+# --- Команда /топдуэль ---
+@dp.message(Command("топдуэль", "topduel"))
+async def cmd_topduel(message: Message) -> None:
+    if not _allowed(message):
+        return
+    rows = await db_top(5)
+    if not rows:
+        await message.reply("ХА!! БРАТАН СМОТРИТ — ЕЩЁ НИ ОДНОЙ ДУЭЛИ НЕ БЫЛО!! /дуэль @user ЧТОБЫ НАЧАТЬ!!")
+        return
+
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    lines = [f"{medals[i]} <b>{name}</b> — {wins} побед{'а' if 2 <= wins % 10 <= 4 and wins % 100 not in range(11, 15) else ('а' if wins % 10 == 1 and wins % 100 != 11 else '')}"
+             for i, (name, wins) in enumerate(rows)]
+    text = "⚔️ <b>ТОП ДУЭЛЯНТОВ:</b>\n\n" + "\n".join(lines) + "\n\nБРАТАН УВАЖАЕТ СИЛЬНЕЙШИХ!!"
+    await message.reply(text, parse_mode="HTML")
 
 
 # --- Команда /курс ---
@@ -864,6 +926,7 @@ async def setup_bot_commands() -> None:
         BotCommand(command="poke", description="Потыкать кого-нибудь — /poke @user 👉"),
         BotCommand(command="kto", description="Кто тут самый X? — /kto вопрос 🎯"),
         BotCommand(command="duel", description="Аниме-дуэль — /duel @user ⚔️"),
+        BotCommand(command="topduel", description="Топ-5 победителей дуэлей 🏆"),
         BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
         BotCommand(command="mem", description="Случайный мем 😂"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
@@ -874,6 +937,7 @@ async def setup_bot_commands() -> None:
 
 # --- Запуск с graceful shutdown ---
 async def main() -> None:
+    await db_init()
     await setup_bot_commands()
     task_praise = asyncio.create_task(scheduler())
     task_quotes = asyncio.create_task(quote_scheduler())
