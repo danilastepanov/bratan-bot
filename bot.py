@@ -188,6 +188,126 @@ async def fetch_wiki_fact() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Аниме — Jikan API (MyAnimeList)
+# ---------------------------------------------------------------------------
+
+_STATUS_MAP = {
+    "Finished Airing": "Завершено",
+    "Currently Airing": "Выходит",
+    "Not yet aired": "Анонс",
+}
+
+
+async def fetch_anime(query: str) -> str | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.jikan.moe/v4/anime",
+                params={"q": query, "limit": 1, "sfw": True},
+            ) as r:
+                data = await r.json()
+
+        results = data.get("data", [])
+        if not results:
+            return None
+
+        a = results[0]
+        title = a.get("title_russian") or a.get("title", "—")
+        title_en = a.get("title_english") or a.get("title", "—")
+        score = a.get("score") or "—"
+        episodes = a.get("episodes") or "—"
+        status = _STATUS_MAP.get(a.get("status", ""), a.get("status", "—"))
+        genres = ", ".join(g["name"] for g in a.get("genres", [])[:3]) or "—"
+        synopsis = (a.get("synopsis") or "").strip()
+        if len(synopsis) > 280:
+            synopsis = synopsis[:280].rsplit(" ", 1)[0] + "..."
+        mal_url = a.get("url", "")
+
+        text = (
+            f"🎌 <b>{title}</b> (<i>{title_en}</i>)\n\n"
+            f"⭐ Рейтинг: <b>{score}</b>\n"
+            f"📺 Эпизодов: <b>{episodes}</b>\n"
+            f"📊 Статус: <b>{status}</b>\n"
+            f"🎭 Жанры: {genres}\n"
+        )
+        if synopsis:
+            text += f"\n📖 {synopsis}\n"
+        if mal_url:
+            text += f"\n🔗 <a href=\"{mal_url}\">MyAnimeList</a>"
+        return text
+
+    except Exception as e:
+        logger.error(f"Anime fetch error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Курс валют — ЦБ РФ
+# ---------------------------------------------------------------------------
+
+_CBR_URL = "https://www.cbr-xml-daily.ru/daily_json.js"
+
+
+async def fetch_currency() -> str | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(_CBR_URL) as r:
+                data = await r.json(content_type=None)
+
+        valutes = data.get("Valute", {})
+        date = data.get("Date", "")[:10]
+
+        def fmt(code: str, flag: str, name: str) -> str:
+            v = valutes.get(code, {})
+            val = v.get("Value", 0)
+            prev = v.get("Previous", 0)
+            diff = val - prev
+            arrow = "📈" if diff > 0 else "📉" if diff < 0 else "➡️"
+            return f"{flag} {name}: <b>{val:.2f} ₽</b> {arrow} <i>({diff:+.2f})</i>"
+
+        return (
+            f"💱 <b>Курсы валют ЦБ РФ</b>\n\n"
+            f"{fmt('USD', '🇺🇸', 'USD')}\n"
+            f"{fmt('EUR', '🇪🇺', 'EUR')}\n"
+            f"{fmt('CNY', '🇨🇳', 'CNY')}\n\n"
+            f"📅 {date}"
+        )
+
+    except Exception as e:
+        logger.error(f"Currency fetch error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Мем — meme-api.com
+# ---------------------------------------------------------------------------
+
+_MEME_URL = "https://meme-api.com/gimme"
+
+
+async def fetch_meme() -> tuple[str, str] | None:
+    """Возвращает (заголовок, url_картинки) или None."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(_MEME_URL) as r:
+                data = await r.json()
+
+        # Пропускаем NSFW и спойлеры
+        if data.get("nsfw") or data.get("spoiler"):
+            return None
+
+        url = data.get("url", "")
+        title = data.get("title", "")
+        if not url:
+            return None
+        return title, url
+
+    except Exception as e:
+        logger.error(f"Meme fetch error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Напоминания
 # ---------------------------------------------------------------------------
 
@@ -334,7 +454,10 @@ async def cmd_help(message: Message) -> None:
         "/братан — Братан хвалит случайного участника\n"
         "/погода <i>город</i> — Узнать текущую погоду\n"
         "/факт — Случайный факт из Википедии\n"
-        "/цитата — Цитата великого человека\n"
+        "/цитата — Цитата аниме персонажа\n"
+        "/аниме <i>название</i> — Инфо об аниме с MyAnimeList\n"
+        "/курс — Курс USD, EUR, CNY от ЦБ РФ\n"
+        "/мем — Случайный мем\n"
         "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
         "/помощь — Это сообщение\n\n"
         "🤖 <b>Автоматически:</b>\n\n"
@@ -406,6 +529,54 @@ async def cmd_quote(message: Message) -> None:
     )
 
 
+# --- Команда /аниме ---
+@dp.message(Command("аниме", "anime"))
+async def cmd_anime(message: Message) -> None:
+    if not _allowed(message):
+        return
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip():
+        await message.reply("ХА!! Братан не знает что искать!! Напиши: /аниме Наруто")
+        return
+    query = args[1].strip()
+    await message.reply("БРАТАН ИДЁТ НА MYANIMELIST!! СЕКУНДУ!!")
+    text = await fetch_anime(query)
+    if text is None:
+        await message.reply(f"ХА!! Братан не нашёл аниме «{query}»!! Проверь название!!")
+    else:
+        await message.reply(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+# --- Команда /курс ---
+@dp.message(Command("курс", "kurs"))
+async def cmd_currency(message: Message) -> None:
+    if not _allowed(message):
+        return
+    text = await fetch_currency()
+    if text is None:
+        await message.reply("ХА!! БРАТАН НЕ СМОГ ПОЛУЧИТЬ КУРС!! ЦБ РФ МОЛЧИТ!!")
+    else:
+        await message.reply(text, parse_mode="HTML")
+
+
+# --- Команда /мем ---
+@dp.message(Command("мем", "mem"))
+async def cmd_meme(message: Message) -> None:
+    if not _allowed(message):
+        return
+    # Пробуем до 3 раз — иногда попадаются NSFW
+    for _ in range(3):
+        result = await fetch_meme()
+        if result:
+            title, url = result
+            try:
+                await message.reply_photo(url, caption=f"😂 {title}" if title else "😂")
+            except Exception:
+                await message.reply(f"😂 {title}\n{url}" if title else f"😂 {url}")
+            return
+    await message.reply("ХА!! БРАТАН НЕ НАШЁЛ МЕМ!! ИНТЕРНЕТ ПОДВЁЛ!!")
+
+
 # --- Команда /напомни ---
 @dp.message(Command("напомни", "napomni"))
 async def cmd_remind(message: Message) -> None:
@@ -463,7 +634,10 @@ async def setup_bot_commands() -> None:
         BotCommand(command="pogoda", description="Погода в городе — /pogoda Москва 🌤"),
         BotCommand(command="fakt", description="Случайный факт из Википедии 🧠"),
         BotCommand(command="napomni", description="Напоминание — /napomni через 2ч встреча ⏰"),
-        BotCommand(command="quote", description="Случайная цитата великих людей 💬"),
+        BotCommand(command="quote", description="Случайная цитата аниме персонажа 💬"),
+        BotCommand(command="anime", description="Инфо об аниме — /anime Наруто 🎌"),
+        BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
+        BotCommand(command="mem", description="Случайный мем 😂"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
     ]
     await bot.set_my_commands(commands)
