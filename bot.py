@@ -188,52 +188,78 @@ async def fetch_wiki_fact() -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Аниме — Jikan API (MyAnimeList)
+# Аниме — Shikimori API
 # ---------------------------------------------------------------------------
 
-_STATUS_MAP = {
-    "Finished Airing": "Завершено",
-    "Currently Airing": "Выходит",
-    "Not yet aired": "Анонс",
+_SHIKI_BASE = "https://shikimori.one/api"
+_SHIKI_HEADERS = {"User-Agent": "bratan-bot/1.0"}
+
+_SHIKI_STATUS = {
+    "released": "Завершено",
+    "ongoing": "Выходит",
+    "anons": "Анонс",
 }
+
+_SHIKI_KIND = {
+    "tv": "ТВ-сериал",
+    "movie": "Фильм",
+    "ova": "OVA",
+    "ona": "ONA",
+    "special": "Спецвыпуск",
+    "music": "Клип",
+}
+
+
+def _strip_bbcode(text: str) -> str:
+    """Убирает BBCode-теги из описаний Shikimori."""
+    text = re.sub(r"\[url=[^\]]*\](.*?)\[/url\]", r"\1", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"\[.*?\]", "", text)
+    return text.strip()
 
 
 async def fetch_anime(query: str) -> str | None:
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=_SHIKI_HEADERS) as session:
+            # Поиск по названию
             async with session.get(
-                "https://api.jikan.moe/v4/anime",
-                params={"q": query, "limit": 1, "sfw": True},
+                f"{_SHIKI_BASE}/animes",
+                params={"search": query, "limit": 1, "order": "popularity"},
             ) as r:
-                data = await r.json()
+                results = await r.json()
 
-        results = data.get("data", [])
-        if not results:
-            return None
+            if not results:
+                return None
 
-        a = results[0]
-        title = a.get("title_russian") or a.get("title", "—")
-        title_en = a.get("title_english") or a.get("title", "—")
+            # Детальная информация (содержит описание и жанры)
+            anime_id = results[0]["id"]
+            async with session.get(f"{_SHIKI_BASE}/animes/{anime_id}") as r:
+                a = await r.json()
+
+        title = a.get("russian") or a.get("name", "—")
+        title_orig = a.get("name", "—")
         score = a.get("score") or "—"
-        episodes = a.get("episodes") or "—"
-        status = _STATUS_MAP.get(a.get("status", ""), a.get("status", "—"))
-        genres = ", ".join(g["name"] for g in a.get("genres", [])[:3]) or "—"
-        synopsis = (a.get("synopsis") or "").strip()
-        if len(synopsis) > 280:
-            synopsis = synopsis[:280].rsplit(" ", 1)[0] + "..."
-        mal_url = a.get("url", "")
+        episodes = a.get("episodes") or a.get("episodes_aired") or "—"
+        status = _SHIKI_STATUS.get(a.get("status", ""), a.get("status", "—"))
+        kind = _SHIKI_KIND.get(a.get("kind", ""), a.get("kind", "—"))
+        genres = ", ".join(
+            g.get("russian") or g.get("name", "") for g in a.get("genres", [])[:3]
+        ) or "—"
+        description = _strip_bbcode(a.get("description") or "")
+        if len(description) > 280:
+            description = description[:280].rsplit(" ", 1)[0] + "..."
+        shiki_url = "https://shikimori.one" + (a.get("url") or "")
 
         text = (
-            f"🎌 <b>{title}</b> (<i>{title_en}</i>)\n\n"
+            f"🎌 <b>{title}</b> (<i>{title_orig}</i>)\n\n"
+            f"🎬 Тип: <b>{kind}</b>\n"
             f"⭐ Рейтинг: <b>{score}</b>\n"
             f"📺 Эпизодов: <b>{episodes}</b>\n"
             f"📊 Статус: <b>{status}</b>\n"
             f"🎭 Жанры: {genres}\n"
         )
-        if synopsis:
-            text += f"\n📖 {synopsis}\n"
-        if mal_url:
-            text += f"\n🔗 <a href=\"{mal_url}\">MyAnimeList</a>"
+        if description:
+            text += f"\n📖 {description}\n"
+        text += f"\n🔗 <a href=\"{shiki_url}\">Shikimori</a>"
         return text
 
     except Exception as e:
@@ -539,7 +565,7 @@ async def cmd_anime(message: Message) -> None:
         await message.reply("ХА!! Братан не знает что искать!! Напиши: /аниме Наруто")
         return
     query = args[1].strip()
-    await message.reply("БРАТАН ИДЁТ НА MYANIMELIST!! СЕКУНДУ!!")
+    await message.reply("БРАТАН ИДЁТ НА SHIKIMORI!! СЕКУНДУ!!")
     text = await fetch_anime(query)
     if text is None:
         await message.reply(f"ХА!! Братан не нашёл аниме «{query}»!! Проверь название!!")
