@@ -481,7 +481,8 @@ async def cmd_help(message: Message) -> None:
         "/погода <i>город</i> — Узнать текущую погоду\n"
         "/факт — Случайный факт из Википедии\n"
         "/цитата — Цитата аниме персонажа\n"
-        "/аниме <i>название</i> — Инфо об аниме с MyAnimeList\n"
+        "/аниме <i>название</i> — Инфо об аниме с Shikimori\n"
+        "/обнять <i>@user</i> — Обнять кого-нибудь 🤗\n"
         "/курс — Курс USD, EUR, CNY от ЦБ РФ\n"
         "/мем — Случайный мем\n"
         "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
@@ -573,6 +574,53 @@ async def cmd_anime(message: Message) -> None:
         await message.reply(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
+# ---------------------------------------------------------------------------
+# Обнимашки — nekos.best
+# ---------------------------------------------------------------------------
+
+_NEKOS_BASE = "https://nekos.best/api/v2"
+
+
+async def fetch_nekos(category: str) -> str | None:
+    """Возвращает URL гифки или None."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{_NEKOS_BASE}/{category}") as r:
+                data = await r.json()
+        results = data.get("results", [])
+        if results:
+            return results[0]["url"]
+    except Exception as e:
+        logger.error(f"nekos.best error: {e}")
+    return None
+
+
+@dp.message(Command("обнять", "hug"))
+async def cmd_hug(message: Message) -> None:
+    if not _allowed(message):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    target = args[1].strip() if len(args) > 1 and args[1].strip() else "всех братанов"
+
+    sender_name = (
+        f"@{message.from_user.username}"
+        if message.from_user and message.from_user.username
+        else (message.from_user.full_name if message.from_user else "Братан")
+    )
+
+    gif_url = await fetch_nekos("hug")
+    caption = f"🤗 <b>{sender_name}</b> обнимает <b>{target}</b>!!"
+
+    if gif_url:
+        try:
+            await message.reply_animation(gif_url, caption=caption, parse_mode="HTML")
+            return
+        except Exception as e:
+            logger.debug(f"reply_animation failed: {e}")
+    await message.reply(caption, parse_mode="HTML")
+
+
 # --- Команда /курс ---
 @dp.message(Command("курс", "kurs"))
 async def cmd_currency(message: Message) -> None:
@@ -662,6 +710,7 @@ async def setup_bot_commands() -> None:
         BotCommand(command="napomni", description="Напоминание — /napomni через 2ч встреча ⏰"),
         BotCommand(command="quote", description="Случайная цитата аниме персонажа 💬"),
         BotCommand(command="anime", description="Инфо об аниме — /anime Наруто 🎌"),
+        BotCommand(command="hug", description="Обнять кого-нибудь — /hug @user 🤗"),
         BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
         BotCommand(command="mem", description="Случайный мем 😂"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
