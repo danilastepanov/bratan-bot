@@ -483,6 +483,9 @@ async def cmd_help(message: Message) -> None:
         "/цитата — Цитата аниме персонажа\n"
         "/аниме <i>название</i> — Инфо об аниме с Shikimori\n"
         "/обнять <i>@user</i> — Обнять кого-нибудь 🤗\n"
+        "/погладить <i>@user</i> — Погладить кого-нибудь 🥺\n"
+        "/кто <i>вопрос</i> — Братан выбирает случайного участника 🎯\n"
+        "/дуэль <i>@user</i> — Вызов на аниме-дуэль ⚔️\n"
         "/курс — Курс USD, EUR, CNY от ЦБ РФ\n"
         "/мем — Случайный мем\n"
         "/напомни через <i>N ч M мин текст</i> — Поставить напоминание\n"
@@ -621,6 +624,124 @@ async def cmd_hug(message: Message) -> None:
     await message.reply(caption, parse_mode="HTML")
 
 
+# --- Команда /погладить ---
+@dp.message(Command("погладить", "pat"))
+async def cmd_pat(message: Message) -> None:
+    if not _allowed(message):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    target = args[1].strip() if len(args) > 1 and args[1].strip() else "кого-то"
+
+    sender_name = (
+        f"@{message.from_user.username}"
+        if message.from_user and message.from_user.username
+        else (message.from_user.full_name if message.from_user else "Братан")
+    )
+
+    gif_url = await fetch_nekos("pat")
+    caption = f"🥺 <b>{sender_name}</b> гладит <b>{target}</b>!!"
+
+    if gif_url:
+        try:
+            await message.reply_animation(gif_url, caption=caption, parse_mode="HTML")
+            return
+        except Exception as e:
+            logger.debug(f"reply_animation failed: {e}")
+    await message.reply(caption, parse_mode="HTML")
+
+
+# ---------------------------------------------------------------------------
+# /кто — выбирает случайного участника
+# ---------------------------------------------------------------------------
+
+_KTO_FALLBACKS = [
+    "самый умный",
+    "главный братан",
+    "настоящий герой",
+    "лучший в команде",
+    "избранный",
+]
+
+
+@dp.message(Command("кто", "kto"))
+async def cmd_kto(message: Message) -> None:
+    if not _allowed(message):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    question = args[1].strip() if len(args) > 1 and args[1].strip() else None
+
+    if not config.MEMBERS:
+        await message.reply("ХА!! БРАТАН НЕ ЗНАЕТ УЧАСТНИКОВ!! ЗАДАЙ MEMBERS В .ENV!!")
+        return
+
+    chosen = random.choice(config.MEMBERS)
+
+    if question:
+        answer = f"🎯 ХА!! БРАТАН РЕШИЛ!! {question.upper()} — это <b>{chosen}</b>!!"
+    else:
+        role = random.choice(_KTO_FALLBACKS)
+        answer = f"🎯 ХА!! БРАТАН ВЫБРАЛ!! <b>{chosen}</b> — {role}!!"
+
+    await message.reply(answer, parse_mode="HTML")
+
+
+# ---------------------------------------------------------------------------
+# /дуэль — аниме-дуэль между двумя участниками
+# ---------------------------------------------------------------------------
+
+_DUEL_WIN_PHRASES = [
+    "{winner} СНЁС {loser} ОДНИМ УДАРОМ!! КАК ГИТАРАКРА!!",
+    "{winner} ПОБЕДИЛ!! {loser} ДАЖЕ НЕ УСПЕЛ ДОСТАТЬ КАТАНУ!!",
+    "БРАТАН ВИДЕЛ — {winner} АКТИВИРОВАЛ ЧИТКАЙТ И УНИЧТОЖИЛ {loser}!!",
+    "{loser} ЛЕЖИТ В НОКАУТЕ!! {winner} СТОИТ НА ВЕРШИНЕ!!",
+    "{winner} ИСПОЛЬЗОВАЛ ЗАПРЕЩЁННЫЙ ПРИЁМ!! {loser} ПОБЕЖДЁН!!",
+    "ПОСЛЕ ДОЛГОЙ БИТВЫ {winner} ВЫШЕЛ ПОБЕДИТЕЛЕМ!! {loser} УВАЖАЕТ СИЛУ!!",
+    "{winner} ПРОБУДИЛ СКРЫТУЮ СИЛУ И СМЁЛ {loser} С АРЕНЫ!!",
+    "{loser} НЕДООЦЕНИЛ {winner}!! КЛАССИЧЕСКАЯ ОШИБКА ЗЛОДЕЯ!!",
+    "{winner} ПРОЧИТАЛ ВСЕ ХОДЫ {loser} НАПЕРЁД!! ЧИТАТЕЛЬ МАНГИ ИМЕЕТ ПРЕИМУЩЕСТВО!!",
+    "НИЧЬЯ?? НЕТ!! В ПОСЛЕДНИЙ МОМЕНТ {winner} НАНЁС ФИНАЛЬНЫЙ УДАР!!",
+]
+
+
+@dp.message(Command("дуэль", "duel"))
+async def cmd_duel(message: Message) -> None:
+    if not _allowed(message):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    challenger = (
+        f"@{message.from_user.username}"
+        if message.from_user and message.from_user.username
+        else (message.from_user.full_name if message.from_user else "Братан")
+    )
+
+    # Противник — из аргументов или случайный участник
+    if len(args) > 1 and args[1].strip():
+        opponent = args[1].strip()
+        if opponent == challenger:
+            await message.reply("ХА!! БРАТАН НЕ ДЕРЁТСЯ САМ С СОБОЙ!! ВЫЗОВИ КОГО-ТО ДРУГОГО!!")
+            return
+    elif config.MEMBERS:
+        candidates = [m for m in config.MEMBERS if m != challenger]
+        opponent = random.choice(candidates) if candidates else random.choice(config.MEMBERS)
+    else:
+        await message.reply("ХА!! НАПИШИ КОГО ВЫЗЫВАЕШЬ: /дуэль @user!!")
+        return
+
+    # Случайный победитель
+    winner, loser = random.choice([(challenger, opponent), (opponent, challenger)])
+    phrase = random.choice(_DUEL_WIN_PHRASES).format(winner=f"<b>{winner}</b>", loser=f"<b>{loser}</b>")
+
+    await message.reply(
+        f"⚔️ <b>{challenger}</b> вызывает <b>{opponent}</b> на дуэль!!\n\n"
+        f"<i>...бой начался...</i>\n\n"
+        f"🏆 {phrase}",
+        parse_mode="HTML",
+    )
+
+
 # --- Команда /курс ---
 @dp.message(Command("курс", "kurs"))
 async def cmd_currency(message: Message) -> None:
@@ -711,6 +832,9 @@ async def setup_bot_commands() -> None:
         BotCommand(command="quote", description="Случайная цитата аниме персонажа 💬"),
         BotCommand(command="anime", description="Инфо об аниме — /anime Наруто 🎌"),
         BotCommand(command="hug", description="Обнять кого-нибудь — /hug @user 🤗"),
+        BotCommand(command="pat", description="Погладить кого-нибудь — /pat @user 🥺"),
+        BotCommand(command="kto", description="Кто тут самый X? — /kto вопрос 🎯"),
+        BotCommand(command="duel", description="Аниме-дуэль — /duel @user ⚔️"),
         BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
         BotCommand(command="mem", description="Случайный мем 😂"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
