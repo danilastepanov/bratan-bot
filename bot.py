@@ -781,21 +781,22 @@ async def cmd_duel(message: Message) -> None:
         return
 
     args = (message.text or "").split(maxsplit=1)
-    challenger = (
+    sender = (
         f"@{message.from_user.username}"
         if message.from_user and message.from_user.username
         else (message.from_user.full_name if message.from_user else "Братан")
     )
 
-    # Противник — из аргументов или случайный участник
     if len(args) > 1 and args[1].strip():
+        # Конкретный противник указан — вызов от отправителя
         opponent = args[1].strip()
-        if opponent == challenger:
+        if opponent == sender:
             await message.reply("ХА!! БРАТАН НЕ ДЕРЁТСЯ САМ С СОБОЙ!! ВЫЗОВИ КОГО-ТО ДРУГОГО!!")
             return
-    elif config.MEMBERS:
-        candidates = [m for m in config.MEMBERS if m != challenger]
-        opponent = random.choice(candidates) if candidates else random.choice(config.MEMBERS)
+        challenger, opponent = sender, opponent
+    elif len(config.MEMBERS) >= 2:
+        # Без аргумента — два случайных участника из MEMBERS
+        challenger, opponent = random.sample(config.MEMBERS, 2)
     else:
         await message.reply("ХА!! НАПИШИ КОГО ВЫЗЫВАЕШЬ: /дуэль @user!!")
         return
@@ -807,7 +808,7 @@ async def cmd_duel(message: Message) -> None:
     total_wins = await db_add_win(winner)
 
     await message.reply(
-        f"⚔️ <b>{challenger}</b> вызывает <b>{opponent}</b> на дуэль!!\n\n"
+        f"⚔️ <b>{challenger}</b> vs <b>{opponent}</b>!!\n\n"
         f"<i>...бой начался...</i>\n\n"
         f"🏆 {phrase}\n\n"
         f"📊 Побед у <b>{winner}</b>: <b>{total_wins}</b>",
