@@ -14,12 +14,18 @@ from aiogram.types import BotCommand, Message, ReactionTypeEmoji
 
 import config
 from phrases import (
+    ALIBI_TEMPLATES,
+    ANIME_QUIZ,
+    ARCHETYPES,
+    CONSPIRACY_TEMPLATES,
     HOLIDAY_PHRASES,
     MEDIA_PHRASES,
+    MISSIONS,
     PRAISE_PHRASES,
     QUOTES,
     REMINDER_FIRE_PHRASES,
     REMINDER_SET_PHRASES,
+    ROAST_TEMPLATES,
     WEATHER_BAD_PHRASES,
     WEATHER_GOOD_PHRASES,
     WEATHER_PHRASES,
@@ -71,6 +77,9 @@ _WMO: dict[int, tuple[str, str]] = {
 
 # Хранилище активных напоминаний: task_id → asyncio.Task
 _reminders: dict[str, asyncio.Task] = {}
+
+# Активные викторины: chat_id → {answer, hint}
+_active_quizzes: dict[int, dict] = {}
 
 
 def _refill(deck: deque, source: list) -> None:
@@ -458,9 +467,23 @@ async def quote_scheduler() -> None:
                 logger.error(f"Failed to send quote to {chat_id}: {e}")
 
 
-# --- Emoji-реакции на текстовые сообщения (8% шанс) ---
+# --- Emoji-реакции + проверка ответа на викторину ---
 @dp.message(F.chat.id.in_(config.CHAT_IDS) & F.text & ~F.text.startswith("/"))
 async def on_text_react(message: Message) -> None:
+    chat_id = message.chat.id
+    # Проверяем ответ на активную викторину
+    if chat_id in _active_quizzes:
+        quiz = _active_quizzes[chat_id]
+        if message.text.strip().lower() == quiz["answer"]:
+            del _active_quizzes[chat_id]
+            name = message.from_user.mention_html()
+            await message.reply(
+                f"🏆 ПРАВИЛЬНО! {name} знает аниме лучше всех!!\n\n"
+                f"Ответ: <b>{quiz['answer'].capitalize()}</b>",
+                parse_mode="HTML",
+            )
+            return
+
     if random.random() > EMOJI_REACTION_CHANCE:
         return
     emoji = random.choice(REACTION_EMOJIS)
@@ -903,6 +926,115 @@ async def cmd_remind(message: Message) -> None:
     logger.info(f"Reminder set for {name} in {chat_id}: '{reminder_text}' in {seconds}s")
 
 
+# --- Команда /роастани ---
+@dp.message(Command("роастани", "roast"))
+async def cmd_roast(message: Message) -> None:
+    if not _allowed(message):
+        return
+    target = None
+    if message.entities:
+        for e in message.entities:
+            if e.type == "mention":
+                target = message.text[e.offset:e.offset + e.length]
+                break
+    if not target and message.reply_to_message:
+        u = message.reply_to_message.from_user
+        target = f"@{u.username}" if u.username else u.first_name
+    if not target:
+        await message.reply("Укажи кого роастить — /роастани @user или ответь на сообщение")
+        return
+    roast = random.choice(ROAST_TEMPLATES).format(target)
+    await message.reply(roast)
+
+
+# --- Команда /заговор ---
+@dp.message(Command("заговор", "conspiracy"))
+async def cmd_conspiracy(message: Message) -> None:
+    if not _allowed(message):
+        return
+    mentions = []
+    if message.entities:
+        for e in message.entities:
+            if e.type == "mention":
+                mentions.append(message.text[e.offset:e.offset + e.length])
+    if len(mentions) < 2:
+        await message.reply("Укажи двух участников — /заговор @user1 @user2")
+        return
+    text = random.choice(CONSPIRACY_TEMPLATES).format(user1=mentions[0], user2=mentions[1])
+    await message.reply(text)
+
+
+# --- Команда /алиби ---
+@dp.message(Command("алиби", "alibi"))
+async def cmd_alibi(message: Message) -> None:
+    if not _allowed(message):
+        return
+    target = None
+    if message.entities:
+        for e in message.entities:
+            if e.type == "mention":
+                target = message.text[e.offset:e.offset + e.length]
+                break
+    if not target and message.reply_to_message:
+        u = message.reply_to_message.from_user
+        target = f"@{u.username}" if u.username else u.first_name
+    if not target:
+        await message.reply("Укажи кому нужно алиби — /алиби @user или ответь на сообщение")
+        return
+    text = random.choice(ALIBI_TEMPLATES).format(user=target)
+    await message.reply(text)
+
+
+# --- Команда /миссия ---
+@dp.message(Command("миссия", "mission"))
+async def cmd_mission(message: Message) -> None:
+    if not _allowed(message):
+        return
+    await message.reply(random.choice(MISSIONS))
+
+
+# --- Команда /характер ---
+@dp.message(Command("характер", "character"))
+async def cmd_character(message: Message) -> None:
+    if not _allowed(message):
+        return
+    target = None
+    target_name = None
+    if message.entities:
+        for e in message.entities:
+            if e.type == "mention":
+                target = message.text[e.offset:e.offset + e.length]
+                target_name = target
+                break
+    if not target:
+        u = message.from_user
+        target_name = f"@{u.username}" if u.username else u.first_name
+    archetype, description = random.choice(ARCHETYPES)
+    await message.reply(
+        f"🎭 <b>{target_name}</b> — это <b>{archetype}</b>\n\n{description}",
+        parse_mode="HTML",
+    )
+
+
+# --- Команда /аниме_викторина ---
+@dp.message(Command("аниме_викторина", "animequiz"))
+async def cmd_anime_quiz(message: Message) -> None:
+    if not _allowed(message):
+        return
+    chat_id = message.chat.id
+    if chat_id in _active_quizzes:
+        await message.reply("⚡ Викторина уже идёт! Ответь на текущий вопрос.")
+        return
+    question, answer, hint = random.choice(ANIME_QUIZ)
+    _active_quizzes[chat_id] = {"answer": answer, "hint": hint}
+    await message.reply(
+        f"🎌 <b>АНИМЕ-ВИКТОРИНА!</b>\n\n"
+        f"❓ {question}\n\n"
+        f"💡 Подсказка: <i>{hint}</i>",
+        parse_mode="HTML",
+    )
+
+
 # --- Команда /братан: только в разрешённых чатах ---
 @dp.message(Command("братан", "bratan"))
 async def cmd_bratan(message: Message) -> None:
@@ -930,6 +1062,12 @@ async def setup_bot_commands() -> None:
         BotCommand(command="topduel", description="Топ-5 победителей дуэлей 🏆"),
         BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
         BotCommand(command="mem", description="Случайный мем 😂"),
+        BotCommand(command="roast", description="Зароастить участника — /roast @user 🔥"),
+        BotCommand(command="conspiracy", description="Раскрыть заговор — /conspiracy @u1 @u2 🕵️"),
+        BotCommand(command="alibi", description="Железное алиби — /alibi @user ⚖️"),
+        BotCommand(command="mission", description="Случайная миссия на день 🎯"),
+        BotCommand(command="character", description="Какой ты аниме-персонаж — /character @user 🎭"),
+        BotCommand(command="animequiz", description="Аниме-викторина 🎌"),
         BotCommand(command="pomosh", description="Список всех команд и возможностей ⚔️"),
     ]
     await bot.set_my_commands(commands)
