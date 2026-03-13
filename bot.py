@@ -484,6 +484,7 @@ async def cmd_help(message: Message) -> None:
         "/аниме <i>название</i> — Инфо об аниме с Shikimori\n"
         "/обнять <i>@user</i> — Обнять кого-нибудь 🤗\n"
         "/погладить <i>@user</i> — Погладить кого-нибудь 🥺\n"
+        "/потыкать <i>@user</i> — Потыкать кого-нибудь 👉\n"
         "/кто <i>вопрос</i> — Братан выбирает случайного участника 🎯\n"
         "/дуэль <i>@user</i> — Вызов на аниме-дуэль ⚔️\n"
         "/курс — Курс USD, EUR, CNY от ЦБ РФ\n"
@@ -641,6 +642,33 @@ async def cmd_pat(message: Message) -> None:
 
     gif_url = await fetch_nekos("pat")
     caption = f"🥺 <b>{sender_name}</b> гладит <b>{target}</b>!!"
+
+    if gif_url:
+        try:
+            await message.reply_animation(gif_url, caption=caption, parse_mode="HTML")
+            return
+        except Exception as e:
+            logger.debug(f"reply_animation failed: {e}")
+    await message.reply(caption, parse_mode="HTML")
+
+
+# --- Команда /потыкать ---
+@dp.message(Command("потыкать", "poke"))
+async def cmd_poke(message: Message) -> None:
+    if not _allowed(message):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    target = args[1].strip() if len(args) > 1 and args[1].strip() else "кого-то"
+
+    sender_name = (
+        f"@{message.from_user.username}"
+        if message.from_user and message.from_user.username
+        else (message.from_user.full_name if message.from_user else "Братан")
+    )
+
+    gif_url = await fetch_nekos("poke")
+    caption = f"👉 <b>{sender_name}</b> тыкает <b>{target}</b>!!"
 
     if gif_url:
         try:
@@ -833,6 +861,7 @@ async def setup_bot_commands() -> None:
         BotCommand(command="anime", description="Инфо об аниме — /anime Наруто 🎌"),
         BotCommand(command="hug", description="Обнять кого-нибудь — /hug @user 🤗"),
         BotCommand(command="pat", description="Погладить кого-нибудь — /pat @user 🥺"),
+        BotCommand(command="poke", description="Потыкать кого-нибудь — /poke @user 👉"),
         BotCommand(command="kto", description="Кто тут самый X? — /kto вопрос 🎯"),
         BotCommand(command="duel", description="Аниме-дуэль — /duel @user ⚔️"),
         BotCommand(command="kurs", description="Курс валют ЦБ РФ 💱"),
